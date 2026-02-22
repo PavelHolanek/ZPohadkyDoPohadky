@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -31,11 +33,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.example.zpohadkydopohadky.ui.theme.ZPohadkyDoPohadkyTheme
+import kotlin.math.min
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -125,18 +132,108 @@ fun IntroScreen(
 
 @Composable
 private fun GameScreen(modifier: Modifier = Modifier) {
-    Box(
+    val context = LocalContext.current
+    val board = remember {
+        loadBoardSpecFromAssets(
+            context = context,
+            lineFiles = listOf("A", "E"),
+            width = 764f,
+            height = 1040f
+        )
+    }
+    val mapPainter = painterResource(id = R.drawable.game_map)
+
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xFFF2F2F2))
     ) {
+        val containerWidth = constraints.maxWidth.toFloat()
+        val containerHeight = constraints.maxHeight.toFloat()
+        val imageWidth = if (mapPainter.intrinsicSize.width > 0f) {
+            mapPainter.intrinsicSize.width
+        } else {
+            containerWidth
+        }
+        val imageHeight = if (mapPainter.intrinsicSize.height > 0f) {
+            mapPainter.intrinsicSize.height
+        } else {
+            containerHeight
+        }
+        val scale = min(containerWidth / imageWidth, containerHeight / imageHeight)
+        val displayWidth = imageWidth * scale
+        val displayHeight = imageHeight * scale
+        val offsetX = (containerWidth - displayWidth) / 2f
+        val offsetY = (containerHeight - displayHeight) / 2f
+
         Image(
-            painter = painterResource(id = R.drawable.game_map),
+            painter = mapPainter,
             contentDescription = null,
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize()
         )
+
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val radius = 6.dp.toPx()
+            for (square in board.squares) {
+                val normalizedX = square.x / board.width
+                val normalizedY = square.y / board.height
+                val x = offsetX + normalizedX * displayWidth
+                val y = offsetY + normalizedY * displayHeight
+                drawCircle(
+                    color = Color(0xFF1E88E5),
+                    radius = radius,
+                    center = Offset(x, y)
+                )
+            }
+        }
     }
+}
+
+private data class BoardSquare(
+    val line: Char,
+    val index: Int,
+    val x: Float,
+    val y: Float,
+    val tag: String? = null
+)
+
+private data class BoardSpec(
+    val width: Float,
+    val height: Float,
+    val squares: List<BoardSquare>
+)
+
+private fun loadBoardSpecFromAssets(
+    context: android.content.Context,
+    lineFiles: List<String>,
+    width: Float,
+    height: Float
+): BoardSpec {
+    val squares = mutableListOf<BoardSquare>()
+    for (line in lineFiles) {
+        val path = "map/$line.csv"
+        try {
+            val input = context.assets.open(path)
+            BufferedReader(InputStreamReader(input)).useLines { lines ->
+                var index = 1
+                lines.forEach { raw ->
+                    val trimmed = raw.trim()
+                    if (trimmed.isEmpty()) return@forEach
+                    val parts = trimmed.split(',')
+                    if (parts.size < 2) return@forEach
+                    val x = parts[0].trim().toFloatOrNull() ?: return@forEach
+                    val y = parts[1].trim().toFloatOrNull() ?: return@forEach
+                    val tag = parts.getOrNull(2)?.trim().orEmpty().ifBlank { null }
+                    squares.add(BoardSquare(line[0], index, x, y, tag))
+                    index++
+                }
+            }
+        } catch (_: Exception) {
+            continue
+        }
+    }
+    return BoardSpec(width = width, height = height, squares = squares)
 }
 
 private fun findNextAvailableAvatarIndex(
