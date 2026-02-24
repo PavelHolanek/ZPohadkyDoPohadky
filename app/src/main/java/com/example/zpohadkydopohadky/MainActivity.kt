@@ -244,8 +244,8 @@ private fun GameScreen(
                     if (!tag.isNullOrBlank()) {
                         drawContext.canvas.nativeCanvas.drawText(
                             tag,
-                            x + radius + 4.dp.toPx(),
-                            y - radius - 2.dp.toPx(),
+                            x - radius - 8.dp.toPx(),
+                            y + 6.dp.toPx(),
                             labelPaint
                         )
                     }
