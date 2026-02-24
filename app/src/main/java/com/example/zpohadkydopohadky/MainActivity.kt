@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
@@ -31,6 +32,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -41,6 +43,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.zpohadkydopohadky.ui.theme.ZPohadkyDoPohadkyTheme
@@ -49,6 +52,8 @@ import kotlin.random.Random
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import android.graphics.Paint
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -160,6 +165,14 @@ private fun GameScreen(
     players: List<Player>
 ) {
     val context = LocalContext.current
+    val avatarResIds = listOf(
+        R.drawable.carodejnice,
+        R.drawable.princezna,
+        R.drawable.trpaslik,
+        R.drawable.cert,
+        R.drawable.vodnik,
+        R.drawable.kral,
+    )
     val board = remember {
         loadBoardSpecFromRaw(
             context = context,
@@ -170,11 +183,27 @@ private fun GameScreen(
     }
     val mapPainter = painterResource(id = R.drawable.game_map)
     val diceValue = remember { mutableStateOf<Int?>(null) }
-    val currentPlayerIndex = 0
-    val currentPlayer = players.getOrNull(currentPlayerIndex)
-    val currentPlayerName = currentPlayer?.name?.ifBlank { "Hráč ${currentPlayerIndex + 1}" }
+    val playerStates = remember(players) {
+        mutableStateListOf<PlayerState>().apply {
+            addAll(
+                players.map { player ->
+                    PlayerState(
+                        name = player.name,
+                        avatarResId = avatarResIds.getOrNull(player.avatarIndex) ?: avatarResIds.first(),
+                        line = 'A',
+                        index = 1
+                    )
+                }
+            )
+        }
+    }
+    val currentPlayerIndex = remember { mutableStateOf(0) }
+    val currentPlayer = playerStates.getOrNull(currentPlayerIndex.value)
+    val currentPlayerName = currentPlayer?.name?.ifBlank { "Hráč ${currentPlayerIndex.value + 1}" }
         ?: "Hráč"
     val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
+    val isMoving = remember { mutableStateOf(false) }
     val labelPaint = remember {
         Paint().apply {
             isAntiAlias = true
@@ -192,7 +221,27 @@ private fun GameScreen(
         DicePanel(
             playerName = currentPlayerName,
             diceValue = diceValue.value,
-            onDiceRoll = { diceValue.value = Random.nextInt(1, 7) },
+            onDiceRoll = {
+                if (playerStates.isEmpty() || isMoving.value) return@DicePanel
+                val roll = Random.nextInt(1, 7)
+                diceValue.value = roll
+                isMoving.value = true
+                coroutineScope.launch {
+                    movePlayerAnimated(
+                        board = board,
+                        states = playerStates,
+                        playerIndex = currentPlayerIndex.value,
+                        steps = roll,
+                        stepDelayMs = 300L
+                    )
+                    diceValue.value = null
+                    if (roll != 6) {
+                        currentPlayerIndex.value =
+                            (currentPlayerIndex.value + 1) % playerStates.size
+                    }
+                    isMoving.value = false
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -251,6 +300,31 @@ private fun GameScreen(
                     }
                 }
             }
+
+            val avatarSizePx = with(density) { 28.dp.toPx() }
+            val grouped = playerStates.groupBy { it.line to it.index }
+            for ((position, group) in grouped) {
+                val square = board.findSquare(position.first, position.second) ?: continue
+                val normalizedX = square.x / board.width
+                val normalizedY = square.y / board.height
+                val baseX = offsetX + normalizedX * displayWidth
+                val baseY = offsetY + normalizedY * displayHeight
+                group.forEachIndexed { idx, playerState ->
+                    val offsetPx = idx * 8
+                    val x = baseX - avatarSizePx / 2f + offsetPx
+                    val y = baseY - avatarSizePx / 2f + offsetPx
+                    Image(
+                        painter = painterResource(id = playerState.avatarResId),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .offset { IntOffset(x.toInt(), y.toInt()) }
+                            .clip(CircleShape)
+                            .border(1.dp, Color.White, CircleShape)
+                    )
+                }
+            }
         }
     }
 }
@@ -305,6 +379,22 @@ data class Player(
     val order: Int
 )
 
+private data class PlayerState(
+    val name: String,
+    val avatarResId: Int,
+    val line: Char,
+    val index: Int,
+    val flags: MutableSet<String> = mutableSetOf()
+) {
+    fun hasFlag(flag: String): Boolean = flags.contains(flag)
+    fun addFlag(flag: String) {
+        flags.add(flag)
+    }
+    fun removeFlag(flag: String) {
+        flags.remove(flag)
+    }
+}
+
 private data class BoardSquare(
     val line: Char,
     val index: Int,
@@ -318,6 +408,134 @@ private data class BoardSpec(
     val height: Float,
     val squares: List<BoardSquare>
 )
+
+private fun BoardSpec.findSquareByTag(tag: String): BoardSquare? {
+    return squares.firstOrNull { it.tag == tag }
+}
+
+private fun BoardSpec.findSquare(line: Char, index: Int): BoardSquare? {
+    return squares.firstOrNull { it.line == line && it.index == index }
+}
+
+private fun BoardSquare.nextSquareStart(
+    board: BoardSpec,
+    currentPlayerState: PlayerState,
+    startingSquare: BoardSquare,
+    diceValue: Int,
+    stepsRemaining: Int
+): BoardSquare? {
+    if (!tag.isNullOrBlank()) {
+        val currentSquareTag = tag
+        val starting = startingSquare
+        val dice = diceValue
+        val remaining = stepsRemaining
+        // Special cases for start movement (to be defined later).
+    }
+    return nextSquarePassing(
+        board = board,
+        currentPlayerState = currentPlayerState,
+        startingSquare = startingSquare,
+        diceValue = diceValue,
+        stepsRemaining = stepsRemaining
+    )
+}
+
+private fun BoardSquare.nextSquarePassing(
+    board: BoardSpec,
+    currentPlayerState: PlayerState,
+    startingSquare: BoardSquare,
+    diceValue: Int,
+    stepsRemaining: Int
+): BoardSquare? {
+    if (!tag.isNullOrBlank()) {
+        val currentSquareTag = tag
+        val starting = startingSquare
+        val dice = diceValue
+        val remaining = stepsRemaining
+        // Special cases for passing movement (to be defined later).
+        currentPlayerState.addFlag("EXAMPLE_FLAG")
+        currentPlayerState.removeFlag("EXAMPLE_FLAG")
+    }
+    return board.findSquare(line, index + 1)
+}
+
+private fun BoardSquare.nextSquareEnd(
+    board: BoardSpec,
+    currentPlayerState: PlayerState,
+    startingSquare: BoardSquare,
+    diceValue: Int,
+    stepsRemaining: Int
+): BoardSquare? {
+    if (!tag.isNullOrBlank()) {
+        val currentSquareTag = tag
+        val starting = startingSquare
+        val dice = diceValue
+        val remaining = stepsRemaining
+        // Special cases for end movement (to be defined later).
+    }
+    return null
+}
+
+private suspend fun movePlayerAnimated(
+    board: BoardSpec,
+    states: MutableList<PlayerState>,
+    playerIndex: Int,
+    steps: Int,
+    stepDelayMs: Long
+) {
+    val state = states.getOrNull(playerIndex) ?: return
+    var current = board.findSquare(state.line, state.index) ?: return
+    val startingSquare = current
+
+    for (step in 1..steps) {
+        val stepsRemaining = steps - step + 1
+        val next = if (step == 1) {
+            current.nextSquareStart(
+                board = board,
+                currentPlayerState = state,
+                startingSquare = startingSquare,
+                diceValue = steps,
+                stepsRemaining = stepsRemaining
+            )
+        } else {
+            current.nextSquarePassing(
+                board = board,
+                currentPlayerState = state,
+                startingSquare = startingSquare,
+                diceValue = steps,
+                stepsRemaining = stepsRemaining
+            )
+        } ?: break
+        current = next
+        states[playerIndex] = state.copy(line = current.line, index = current.index)
+        delay(stepDelayMs)
+    }
+
+    val end1 = current.nextSquareEnd(
+        board = board,
+        currentPlayerState = state,
+        startingSquare = startingSquare,
+        diceValue = steps,
+        stepsRemaining = 0
+    )
+    if (end1 != null) {
+        current = end1
+        states[playerIndex] = state.copy(line = current.line, index = current.index)
+        delay(stepDelayMs)
+        val end2 = end1.nextSquareEnd(
+            board = board,
+            currentPlayerState = state,
+            startingSquare = startingSquare,
+            diceValue = steps,
+            stepsRemaining = 0
+        )
+        if (end2 != null) {
+            current = end2
+            states[playerIndex] = state.copy(line = current.line, index = current.index)
+            delay(stepDelayMs)
+        }
+    }
+}
 
 private fun loadBoardSpecFromRaw(
     context: android.content.Context,
