@@ -430,7 +430,38 @@ private fun BoardSquare.nextSquareStart(
         val dice = diceValue
         val remaining = stepsRemaining
         // Special cases for start movement (to be defined later).
+        if (tag == "San" && diceValue != 3) {
+            return null;
+        }
+        if (tag == "Tun" && diceValue != 6 && !currentPlayerState.hasFlag("STUDNA")) {
+            return null;
+        }
+        if ((tag == "Zabak1" || tag == "Zabak2") && diceValue == 1) {
+            if (currentPlayerState.hasFlag("STUDNA"))
+            {
+                return board.findSquareByTag("Koruna")
+            }
+            else
+            {
+                return board.findSquareByTag("Studna")
+            }
+        }
+        if (tag == "I") {
+            return board.findSquareByTag("StartE")
+        }
+        if (tag == "II") {
+            return board.findSquareByTag("EndE")
+        }
     }
+    if (tag in listOf("Carodejnice", "Vodnik", "Zabak1", "Zabak2", "Studna"))
+    {
+        if (currentPlayerState.hasFlag("STUDNA"))
+        {
+            board.findSquare(line, index - 1)
+        }
+        return board.findSquare(line, index + 1)
+    }
+
     return nextSquarePassing(
         board = board,
         currentPlayerState = currentPlayerState,
@@ -453,8 +484,80 @@ private fun BoardSquare.nextSquarePassing(
         val dice = diceValue
         val remaining = stepsRemaining
         // Special cases for passing movement (to be defined later).
-        currentPlayerState.addFlag("EXAMPLE_FLAG")
-        currentPlayerState.removeFlag("EXAMPLE_FLAG")
+        //currentPlayerState.addFlag("EXAMPLE_FLAG")
+        //currentPlayerState.removeFlag("EXAMPLE_FLAG")number % 2 != 0
+        when (tag) {
+            "Carodejnice"->
+            {
+                if(diceValue % 2 == 0)
+                {
+                    return board.findSquareByTag("StartC")
+                }
+                else
+                {
+                    return board.findSquareByTag("StartB")
+                }
+            }
+            "Brana"->
+            {
+                if(diceValue % 2 == 0)
+                {
+                    return board.findSquareByTag("StartG")
+                }
+                else
+                {
+                    return board.findSquareByTag("StartF")
+                }
+            }
+            "Vodnik"->{
+                if (!currentPlayerState.hasFlag("STUDNA"))
+                {
+                    return null
+                }
+            }
+            "Zabak1"->{
+                if (currentPlayerState.hasFlag("STUDNA"))
+                {
+                    return startingSquare
+                }
+            }
+            "Zabak2"->{
+                if (!currentPlayerState.hasFlag("STUDNA"))
+                {
+                    return startingSquare
+                }
+            }
+            "StartC"->{
+                if (currentPlayerState.hasFlag("STUDNA"))
+                {
+                    currentPlayerState.removeFlag("STUDNA")
+                    return board.findSquareByTag("Carodejnice")
+                }
+            }
+            "Studna"->{
+                return startingSquare
+            }
+            "EndB"->return board.findSquareByTag("BPokracovani")
+            "EndD"->return board.findSquareByTag("DPokracovani")
+            "EndE"->return board.findSquareByTag("II")
+            "StartE"->return board.findSquareByTag("I")
+            "KonecI"->{
+                if (stepsRemaining !=1 )
+                {
+                    return startingSquare
+                }
+            }
+            "KonecII"->{
+                if (stepsRemaining !=1 )
+                {
+                    return startingSquare
+                }
+            }
+        }
+    }
+    if (currentPlayerState.hasFlag("STUDNA"))
+    {
+        board.findSquare(line, index - 1)
     }
     return board.findSquare(line, index + 1)
 }
@@ -472,6 +575,52 @@ private fun BoardSquare.nextSquareEnd(
         val dice = diceValue
         val remaining = stepsRemaining
         // Special cases for end movement (to be defined later).
+        when (tag) {
+            "Mec"-> return board.findSquareByTag("ZaSani")
+            "CernyKun"-> return board.findSquareByTag("Lucifer")
+            "BilyKun"-> return board.findSquareByTag("Vrch")
+            "HnedyKun"-> return board.findSquareByTag("Carodejnice")
+            "Princezna"->{
+                if (!currentPlayerState.hasFlag("STUDNA"))
+                {
+                    return board.findSquareByTag("Vodnik")
+                }
+            }
+            "Vodnik"->{
+                if (currentPlayerState.hasFlag("STUDNA"))
+                {
+                    return board.findSquareByTag("Princezna")
+                }
+            }
+            "PtakOhnivak"->{
+                if (currentPlayerState.hasFlag("STUDNA"))
+                {
+                    return board.findSquareByTag("Vrch")
+                }
+                else
+                {
+                    return board.findSquareByTag("Tun")
+                }
+            }
+            "Jablko2"-> return board.findSquareByTag("Jablko1")
+            "Jablko1"-> return board.findSquareByTag("Jablko2")
+            "Cert"-> return board.findSquare(line, index - 6)
+            "Cert_prvni"-> return board.findSquareByTag("Lucifer")
+            "Vrana"-> return board.findSquareByTag("Carodejnice")
+            "Holub"-> return board.findSquareByTag("Vrch")
+            "CernePrase"-> return board.findSquareByTag("Lucifer")
+            "BilePrase"-> return board.findSquareByTag("Vrch")
+            "Obr"-> return board.findSquareByTag("Vrch")
+            "Brana"-> return board.findSquareByTag("Carodejnice")
+            "Studna"->currentPlayerState.addFlag("STUDNA")
+            "Had"-> return board.findSquareByTag("Koruna")
+            "Drak"-> return board.findSquareByTag("Hvezda")
+            "KonecI"-> return board.findSquareByTag("I")
+            "KonecII"-> return board.findSquareByTag("II")
+            "Poklad"->{
+                //Vyhra
+            }
+        }
     }
     return null
 }
