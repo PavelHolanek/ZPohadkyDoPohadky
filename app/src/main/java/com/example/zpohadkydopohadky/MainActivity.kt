@@ -439,6 +439,7 @@ private fun BoardSquare.nextSquareStart(
         if ((tag == "Zabak1" || tag == "Zabak2") && diceValue == 1) {
             if (currentPlayerState.hasFlag("STUDNA"))
             {
+                currentPlayerState.removeFlag("STUDNA")
                 return board.findSquareByTag("Koruna")
             }
             else
@@ -450,14 +451,24 @@ private fun BoardSquare.nextSquareStart(
             return board.findSquareByTag("StartE")
         }
         if (tag == "II") {
+            currentPlayerState.addFlag("E_OBRACENE")
             return board.findSquareByTag("EndE")
+        }
+        if (tag == "Carodejnice"){
+            if(currentPlayerState.hasFlag("STUDNA")){
+                currentPlayerState.removeFlag("STUDNA")
+            }
+            if(currentPlayerState.hasFlag("B_ZNOVA")){
+                currentPlayerState.removeFlag("B_ZNOVA")
+                return board.findSquareByTag("StartB")
+            }
         }
     }
     if (tag in listOf("Carodejnice", "Vodnik", "Zabak1", "Zabak2", "Studna"))
     {
-        if (currentPlayerState.hasFlag("STUDNA"))
+        if (currentPlayerState.hasFlag("STUDNA") || currentPlayerState.hasFlag("E_OBRACENE"))
         {
-            board.findSquare(line, index - 1)
+            return board.findSquare(line, index - 1)
         }
         return board.findSquare(line, index + 1)
     }
@@ -489,6 +500,11 @@ private fun BoardSquare.nextSquarePassing(
         when (tag) {
             "Carodejnice"->
             {
+                if(currentPlayerState.hasFlag("STUDNA"))
+                {
+                    currentPlayerState.removeFlag("STUDNA")
+                    return board.findSquare(line, index + 1)
+                }
                 if(diceValue % 2 == 0)
                 {
                     return board.findSquareByTag("StartC")
@@ -516,48 +532,63 @@ private fun BoardSquare.nextSquarePassing(
                 }
             }
             "Zabak1"->{
-                if (currentPlayerState.hasFlag("STUDNA"))
+                if (currentPlayerState.hasFlag("STUDNA") && !currentPlayerState.hasFlag("NASTEVA_ZABAKA"))
                 {
+                    currentPlayerState.addFlag("STOP")
                     return startingSquare
                 }
             }
             "Zabak2"->{
-                if (!currentPlayerState.hasFlag("STUDNA"))
+                if (!currentPlayerState.hasFlag("STUDNA") && !currentPlayerState.hasFlag("NASTEVA_ZABAKA"))
                 {
+                    currentPlayerState.addFlag("STOP")
                     return startingSquare
                 }
             }
             "StartC"->{
                 if (currentPlayerState.hasFlag("STUDNA"))
                 {
-                    currentPlayerState.removeFlag("STUDNA")
                     return board.findSquareByTag("Carodejnice")
                 }
             }
             "Studna"->{
+                currentPlayerState.addFlag("STOP")
                 return startingSquare
             }
             "EndB"->return board.findSquareByTag("BPokracovani")
             "EndD"->return board.findSquareByTag("DPokracovani")
-            "EndE"->return board.findSquareByTag("II")
-            "StartE"->return board.findSquareByTag("I")
+            "EndE"->{
+                if(!currentPlayerState.hasFlag("E_OBRACENE"))
+                {
+                    return board.findSquareByTag("II")
+                }
+            }
+            "StartE"->{
+                if(currentPlayerState.hasFlag("E_OBRACENE"))
+                {
+                    currentPlayerState.removeFlag("E_OBRACENE")
+                    return board.findSquareByTag("I")
+                }
+            }
             "KonecI"->{
                 if (stepsRemaining !=1 )
                 {
+                    currentPlayerState.addFlag("STOP")
                     return startingSquare
                 }
             }
             "KonecII"->{
                 if (stepsRemaining !=1 )
                 {
+                    currentPlayerState.addFlag("STOP")
                     return startingSquare
                 }
             }
         }
     }
-    if (currentPlayerState.hasFlag("STUDNA"))
+    if (currentPlayerState.hasFlag("STUDNA") || currentPlayerState.hasFlag("E_OBRACENE"))
     {
-        board.findSquare(line, index - 1)
+        return board.findSquare(line, index - 1)
     }
     return board.findSquare(line, index + 1)
 }
@@ -579,7 +610,10 @@ private fun BoardSquare.nextSquareEnd(
             "Mec"-> return board.findSquareByTag("ZaSani")
             "CernyKun"-> return board.findSquareByTag("Lucifer")
             "BilyKun"-> return board.findSquareByTag("Vrch")
-            "HnedyKun"-> return board.findSquareByTag("Carodejnice")
+            "HnedyKun"-> {
+                currentPlayerState.addFlag("B_ZNOVA")
+                return board.findSquareByTag("Carodejnice")
+            }
             "Princezna"->{
                 if (!currentPlayerState.hasFlag("STUDNA"))
                 {
@@ -595,6 +629,7 @@ private fun BoardSquare.nextSquareEnd(
             "PtakOhnivak"->{
                 if (currentPlayerState.hasFlag("STUDNA"))
                 {
+                    currentPlayerState.removeFlag("STUDNA")
                     return board.findSquareByTag("Vrch")
                 }
                 else
@@ -602,21 +637,57 @@ private fun BoardSquare.nextSquareEnd(
                     return board.findSquareByTag("Tun")
                 }
             }
-            "Jablko2"-> return board.findSquareByTag("Jablko1")
-            "Jablko1"-> return board.findSquareByTag("Jablko2")
+            "Jablko2"-> {
+                if (currentPlayerState.hasFlag("JABLKO")) {
+                    currentPlayerState.removeFlag("JABLKO")
+                }
+                else
+                {
+                    currentPlayerState.addFlag("JABLKO")
+                    return board.findSquareByTag("Jablko1")
+                }
+            }
+            "Jablko1"-> {
+                if (currentPlayerState.hasFlag("JABLKO")) {
+                    currentPlayerState.removeFlag("JABLKO")
+                }
+                else
+                {
+                    currentPlayerState.addFlag("JABLKO")
+                    return board.findSquareByTag("Jablko2")
+                }
+            }
             "Cert"-> return board.findSquare(line, index - 6)
             "Cert_prvni"-> return board.findSquareByTag("Lucifer")
             "Vrana"-> return board.findSquareByTag("Carodejnice")
             "Holub"-> return board.findSquareByTag("Vrch")
-            "CernePrase"-> return board.findSquareByTag("Lucifer")
-            "BilePrase"-> return board.findSquareByTag("Vrch")
+            "CernePrase"-> {
+                currentPlayerState.removeFlag("E_OBRACENE")
+                return board.findSquareByTag("Lucifer")
+            }
+            "BilePrase"-> {
+                currentPlayerState.removeFlag("E_OBRACENE")
+                return board.findSquareByTag("Vrch")
+            }
             "Obr"-> return board.findSquareByTag("Vrch")
             "Brana"-> return board.findSquareByTag("Carodejnice")
-            "Studna"->currentPlayerState.addFlag("STUDNA")
+            "Studna"->{
+                currentPlayerState.removeFlag("NASTEVA_ZABAKA")
+                currentPlayerState.addFlag("STUDNA")
+            }
             "Had"-> return board.findSquareByTag("Koruna")
             "Drak"-> return board.findSquareByTag("Hvezda")
             "KonecI"-> return board.findSquareByTag("I")
-            "KonecII"-> return board.findSquareByTag("II")
+            "KonecII"-> {
+
+                return board.findSquareByTag("II")
+            }
+            "Zabak1"->{
+                currentPlayerState.addFlag("NASTEVA_ZABAKA")
+            }
+            "Zabak2"->{
+                currentPlayerState.addFlag("NASTEVA_ZABAKA")
+            }
             "Poklad"->{
                 //Vyhra
             }
@@ -658,6 +729,11 @@ private suspend fun movePlayerAnimated(
         current = next
         states[playerIndex] = state.copy(line = current.line, index = current.index)
         delay(stepDelayMs)
+        if (state.hasFlag("STOP"))
+        {
+            state.removeFlag("STOP")
+            break;
+        }
     }
 
     val end1 = current.nextSquareEnd(
