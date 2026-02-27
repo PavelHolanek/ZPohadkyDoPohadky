@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -67,7 +68,11 @@ class MainActivity : ComponentActivity() {
                     if (showGame.value) {
                         GameScreen(
                             modifier = Modifier.padding(innerPadding),
-                            players = players.value
+                            players = players.value,
+                            onExitToMenu = {
+                                players.value = emptyList()
+                                showGame.value = false
+                            }
                         )
                     } else {
                         IntroScreen(
@@ -104,6 +109,7 @@ fun IntroScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .background(Color(0xFFDAB38C))
             .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.Top
     ) {
@@ -162,7 +168,8 @@ fun IntroScreen(
 @Composable
 private fun GameScreen(
     modifier: Modifier = Modifier,
-    players: List<Player>
+    players: List<Player>,
+    onExitToMenu: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val avatarResIds = listOf(
@@ -172,6 +179,12 @@ private fun GameScreen(
         R.drawable.cert,
         R.drawable.vodnik,
         R.drawable.kral,
+    )
+    val playerColors = listOf(
+        Color(0xFFFFD54F),
+        Color(0xFF1976D2),
+        Color(0xFFD32F2F),
+        Color(0xFF388E3C)
     )
     val board = remember {
         loadBoardSpecFromRaw(
@@ -190,6 +203,7 @@ private fun GameScreen(
                     PlayerState(
                         name = player.name,
                         avatarResId = avatarResIds.getOrNull(player.avatarIndex) ?: avatarResIds.first(),
+                        color = playerColors.getOrNull(player.order) ?: Color.White,
                         line = 'A',
                         index = 1
                     )
@@ -204,6 +218,7 @@ private fun GameScreen(
     val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
     val isMoving = remember { mutableStateOf(false) }
+    val winner = remember { mutableStateOf<PlayerState?>(null) }
     val labelPaint = remember {
         Paint().apply {
             isAntiAlias = true
@@ -216,13 +231,15 @@ private fun GameScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFFF2F2F2))
+            .background(Color(0xFFDAB38C))
     ) {
         DicePanel(
             playerName = currentPlayerName,
+            playerAvatarResId = currentPlayer?.avatarResId,
+            playerColor = currentPlayer?.color ?: Color.White,
             diceValue = diceValue.value,
             onDiceRoll = {
-                if (playerStates.isEmpty() || isMoving.value) return@DicePanel
+                if (playerStates.isEmpty() || isMoving.value || winner.value != null) return@DicePanel
                 val roll = Random.nextInt(1, 7)
                 diceValue.value = roll
                 isMoving.value = true
@@ -234,6 +251,9 @@ private fun GameScreen(
                         steps = roll,
                         stepDelayMs = 300L
                     )
+                    if (currentPlayer?.hasFlag("WIN") == true) {
+                        winner.value = currentPlayer
+                    }
                     diceValue.value = null
                     if (roll != 6) {
                         currentPlayerIndex.value =
@@ -313,25 +333,45 @@ private fun GameScreen(
                     val offsetPx = idx * 8
                     val x = baseX - avatarSizePx / 2f + offsetPx
                     val y = baseY - avatarSizePx / 2f + offsetPx
-                    Image(
-                        painter = painterResource(id = playerState.avatarResId),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
+                    Box(
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(30.dp)
                             .offset { IntOffset(x.toInt(), y.toInt()) }
                             .clip(CircleShape)
+                            .background(playerState.color)
                             .border(1.dp, Color.White, CircleShape)
-                    )
+                    ) {
+                        Image(
+                            painter = painterResource(id = playerState.avatarResId),
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .padding(3.dp)
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                        )
+                    }
                 }
             }
         }
+    }
+
+    if (winner.value != null) {
+        WinPopup(
+            player = winner.value!!,
+            onNewGame = {
+                winner.value = null
+                onExitToMenu()
+            }
+        )
     }
 }
 
 @Composable
 private fun DicePanel(
     playerName: String,
+    playerAvatarResId: Int?,
+    playerColor: Color,
     diceValue: Int?,
     onDiceRoll: () -> Unit,
     modifier: Modifier = Modifier
@@ -346,9 +386,45 @@ private fun DicePanel(
         else -> R.drawable.dice_question_mark
     }
     Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(playerColor)
+                    .border(1.dp, Color.White, CircleShape)
+            ) {
+                if (playerAvatarResId != null) {
+                    Image(
+                        painter = painterResource(id = playerAvatarResId),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .height(56.dp),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Na tahu:",
+                    style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    text = playerName,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+        }
+
         Image(
             painter = painterResource(id = diceResId),
             contentDescription = null,
@@ -356,19 +432,52 @@ private fun DicePanel(
                 .size(64.dp)
                 .clickable(onClick = onDiceRoll)
         )
+    }
+}
+
+@Composable
+private fun WinPopup(
+    player: PlayerState,
+    onNewGame: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x88000000))
+    ) {
         Column(
             modifier = Modifier
-                .height(64.dp),
-            verticalArrangement = Arrangement.Center
+                .align(androidx.compose.ui.Alignment.Center)
+                .background(Color(0xFFF8F4F2), RoundedCornerShape(20.dp))
+                .padding(horizontal = 32.dp, vertical = 24.dp),
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
         ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(player.color)
+                    .border(2.dp, Color.White, CircleShape)
+            ) {
+                Image(
+                    painter = painterResource(id = player.avatarResId),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .padding(6.dp)
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "Na tahu:",
-                style = MaterialTheme.typography.labelLarge
+                text = "Výhra",
+                style = MaterialTheme.typography.titleLarge
             )
-            Text(
-                text = playerName,
-                style = MaterialTheme.typography.titleMedium
-            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Button(onClick = onNewGame) {
+                Text(text = "Nová Hra")
+            }
         }
     }
 }
@@ -382,6 +491,7 @@ data class Player(
 private data class PlayerState(
     val name: String,
     val avatarResId: Int,
+    val color: Color,
     val line: Char,
     val index: Int,
     val flags: MutableSet<String> = mutableSetOf()
@@ -660,7 +770,7 @@ private fun BoardSquare.nextSquareEnd(
             "Cert"-> return board.findSquare(line, index - 6)
             "Cert_prvni"-> return board.findSquareByTag("Lucifer")
             "Vrana"-> return board.findSquareByTag("Carodejnice")
-            "Holub"-> return board.findSquareByTag("Vrch")
+            "Holubice"-> return board.findSquareByTag("Vrch")
             "CernePrase"-> {
                 currentPlayerState.removeFlag("E_OBRACENE")
                 return board.findSquareByTag("Lucifer")
@@ -689,7 +799,8 @@ private fun BoardSquare.nextSquareEnd(
                 currentPlayerState.addFlag("NASTEVA_ZABAKA")
             }
             "Poklad"->{
-                //Vyhra
+                currentPlayerState.addFlag("WIN")
+                //ADD_WIN_POPUP
             }
         }
     }
@@ -760,6 +871,7 @@ private suspend fun movePlayerAnimated(
             delay(stepDelayMs)
         }
     }
+    delay(stepDelayMs)
 }
 
 private fun loadBoardSpecFromRaw(
