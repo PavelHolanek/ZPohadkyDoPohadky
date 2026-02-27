@@ -25,6 +25,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -34,6 +35,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -65,10 +67,12 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     val showGame = remember { mutableStateOf(false) }
                     val players = remember { mutableStateOf(emptyList<Player>()) }
+                    val autoplay = remember { mutableStateOf(false) }
                     if (showGame.value) {
                         GameScreen(
                             modifier = Modifier.padding(innerPadding),
                             players = players.value,
+                            autoplay = autoplay.value,
                             onExitToMenu = {
                                 players.value = emptyList()
                                 showGame.value = false
@@ -77,6 +81,8 @@ class MainActivity : ComponentActivity() {
                     } else {
                         IntroScreen(
                             modifier = Modifier.padding(innerPadding),
+                            autoplay = autoplay.value,
+                            onAutoplayChange = { autoplay.value = it },
                             onStartGame = { activePlayers ->
                                 players.value = activePlayers
                                 showGame.value = true
@@ -92,6 +98,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun IntroScreen(
     modifier: Modifier = Modifier,
+    autoplay: Boolean = false,
+    onAutoplayChange: (Boolean) -> Unit = {},
     onStartGame: (List<Player>) -> Unit = {}
 ) {
     val avatarIds = listOf(
@@ -142,6 +150,25 @@ fun IntroScreen(
 
         Spacer(modifier = Modifier.weight(1f))
 
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Checkbox(
+                checked = autoplay,
+                onCheckedChange = onAutoplayChange
+            )
+            Text(
+                text = "Autoplay",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .align(androidx.compose.ui.Alignment.CenterVertically)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         Button(
             onClick = {
                 val activePlayers = avatarIndices
@@ -169,6 +196,7 @@ fun IntroScreen(
 private fun GameScreen(
     modifier: Modifier = Modifier,
     players: List<Player>,
+    autoplay: Boolean = false,
     onExitToMenu: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -228,6 +256,38 @@ private fun GameScreen(
     }
     labelPaint.textSize = with(density) { 12.sp.toPx() }
 
+    fun startRoll() {
+        if (playerStates.isEmpty() || isMoving.value || winner.value != null) return
+        val roll = Random.nextInt(1, 7)
+        diceValue.value = roll
+        isMoving.value = true
+        coroutineScope.launch {
+            movePlayerAnimated(
+                board = board,
+                states = playerStates,
+                playerIndex = currentPlayerIndex.value,
+                steps = roll,
+                stepDelayMs = 300L
+            )
+            if (currentPlayer?.hasFlag("WIN") == true) {
+                winner.value = currentPlayer
+            }
+            diceValue.value = null
+            if (roll != 6) {
+                currentPlayerIndex.value =
+                    (currentPlayerIndex.value + 1) % playerStates.size
+            }
+            isMoving.value = false
+        }
+    }
+
+    LaunchedEffect(autoplay, currentPlayerIndex.value, isMoving.value, winner.value) {
+        if (autoplay && !isMoving.value && winner.value == null) {
+            delay(300L)
+            startRoll()
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -239,28 +299,7 @@ private fun GameScreen(
             playerColor = currentPlayer?.color ?: Color.White,
             diceValue = diceValue.value,
             onDiceRoll = {
-                if (playerStates.isEmpty() || isMoving.value || winner.value != null) return@DicePanel
-                val roll = Random.nextInt(1, 7)
-                diceValue.value = roll
-                isMoving.value = true
-                coroutineScope.launch {
-                    movePlayerAnimated(
-                        board = board,
-                        states = playerStates,
-                        playerIndex = currentPlayerIndex.value,
-                        steps = roll,
-                        stepDelayMs = 300L
-                    )
-                    if (currentPlayer?.hasFlag("WIN") == true) {
-                        winner.value = currentPlayer
-                    }
-                    diceValue.value = null
-                    if (roll != 6) {
-                        currentPlayerIndex.value =
-                            (currentPlayerIndex.value + 1) % playerStates.size
-                    }
-                    isMoving.value = false
-                }
+                startRoll()
             },
             modifier = Modifier
                 .fillMaxWidth()
