@@ -67,23 +67,33 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     val showGame = remember { mutableStateOf(false) }
                     val players = remember { mutableStateOf(emptyList<Player>()) }
+                    val savedMenuSetup = remember {
+                        mutableStateOf(
+                            List(4) { PlayerSetupDraft(name = "", avatarIndex = -1) }
+                        )
+                    }
                     val autoplay = remember { mutableStateOf(false) }
+                    val fastTurns = remember { mutableStateOf(false) }
                     if (showGame.value) {
                         GameScreen(
                             modifier = Modifier.padding(innerPadding),
                             players = players.value,
                             autoplay = autoplay.value,
+                            fastTurns = fastTurns.value,
                             onExitToMenu = {
-                                players.value = emptyList()
                                 showGame.value = false
                             }
                         )
                     } else {
                         IntroScreen(
                             modifier = Modifier.padding(innerPadding),
+                            initialSetup = savedMenuSetup.value,
                             autoplay = autoplay.value,
                             onAutoplayChange = { autoplay.value = it },
-                            onStartGame = { activePlayers ->
+                            fastTurns = fastTurns.value,
+                            onFastTurnsChange = { fastTurns.value = it },
+                            onStartGame = { activePlayers, setup ->
+                                savedMenuSetup.value = setup
                                 players.value = activePlayers
                                 showGame.value = true
                             }
@@ -98,9 +108,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun IntroScreen(
     modifier: Modifier = Modifier,
+    initialSetup: List<PlayerSetupDraft> = List(4) { PlayerSetupDraft("", -1) },
     autoplay: Boolean = false,
     onAutoplayChange: (Boolean) -> Unit = {},
-    onStartGame: (List<Player>) -> Unit = {}
+    fastTurns: Boolean = false,
+    onFastTurnsChange: (Boolean) -> Unit = {},
+    onStartGame: (List<Player>, List<PlayerSetupDraft>) -> Unit = { _, _ -> }
 ) {
     val avatarIds = listOf(
         R.drawable.carodejnice,
@@ -110,8 +123,22 @@ fun IntroScreen(
         R.drawable.vodnik,
         R.drawable.kral,
     )
-    val names = remember { mutableStateListOf("", "", "", "") }
-    val avatarIndices = remember { mutableStateListOf(-1, -1, -1, -1) }
+    val names = remember(initialSetup) {
+        mutableStateListOf(
+            initialSetup.getOrNull(0)?.name.orEmpty(),
+            initialSetup.getOrNull(1)?.name.orEmpty(),
+            initialSetup.getOrNull(2)?.name.orEmpty(),
+            initialSetup.getOrNull(3)?.name.orEmpty(),
+        )
+    }
+    val avatarIndices = remember(initialSetup) {
+        mutableStateListOf(
+            initialSetup.getOrNull(0)?.avatarIndex ?: -1,
+            initialSetup.getOrNull(1)?.avatarIndex ?: -1,
+            initialSetup.getOrNull(2)?.avatarIndex ?: -1,
+            initialSetup.getOrNull(3)?.avatarIndex ?: -1,
+        )
+    }
     val isAnyPlayerActive = avatarIndices.any { it >= 0 }
 
     Column(
@@ -121,9 +148,20 @@ fun IntroScreen(
             .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.Top
     ) {
+        Image(
+            painter = painterResource(id = R.drawable.logo),
+            contentDescription = null,
+            modifier = Modifier
+                .size(120.dp)
+                .align(androidx.compose.ui.Alignment.CenterHorizontally)
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         Text(
             text = "Z pohádky do pohádky",
             style = MaterialTheme.typography.headlineLarge,
+            modifier = Modifier.align(androidx.compose.ui.Alignment.CenterHorizontally),
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -167,6 +205,23 @@ fun IntroScreen(
             )
         }
 
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start
+        ) {
+            Checkbox(
+                checked = fastTurns,
+                onCheckedChange = onFastTurnsChange
+            )
+            Text(
+                text = "Rychlé tahy",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .align(androidx.compose.ui.Alignment.CenterVertically)
+            )
+        }
+
         Spacer(modifier = Modifier.height(12.dp))
 
         Button(
@@ -179,7 +234,13 @@ fun IntroScreen(
                             null
                         }
                     }
-                onStartGame(activePlayers)
+                val setup = (0..3).map { idx ->
+                    PlayerSetupDraft(
+                        name = names[idx],
+                        avatarIndex = avatarIndices[idx]
+                    )
+                }
+                onStartGame(activePlayers, setup)
             },
             enabled = isAnyPlayerActive,
             modifier = Modifier
@@ -197,6 +258,7 @@ private fun GameScreen(
     modifier: Modifier = Modifier,
     players: List<Player>,
     autoplay: Boolean = false,
+    fastTurns: Boolean = false,
     onExitToMenu: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -259,6 +321,7 @@ private fun GameScreen(
     fun startRoll() {
         if (playerStates.isEmpty() || isMoving.value || winner.value != null) return
         val roll = Random.nextInt(1, 7)
+        val stepDelayMs = if (fastTurns) 30L else 300L
         diceValue.value = roll
         isMoving.value = true
         coroutineScope.launch {
@@ -267,7 +330,7 @@ private fun GameScreen(
                 states = playerStates,
                 playerIndex = currentPlayerIndex.value,
                 steps = roll,
-                stepDelayMs = 300L
+                stepDelayMs = stepDelayMs
             )
             if (currentPlayer?.hasFlag("WIN") == true) {
                 winner.value = currentPlayer
@@ -335,7 +398,7 @@ private fun GameScreen(
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize()
             )
-
+            /*
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val radius = 6.dp.toPx()
                 for (square in board.squares) {
@@ -358,7 +421,7 @@ private fun GameScreen(
                         )
                     }
                 }
-            }
+            }*/
 
             val avatarSizePx = with(density) { 28.dp.toPx() }
             val grouped = playerStates.groupBy { it.line to it.index }
@@ -513,6 +576,11 @@ private fun WinPopup(
                 text = "Výhra",
                 style = MaterialTheme.typography.titleLarge
             )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = player.name.ifBlank { "Hráč" },
+                style = MaterialTheme.typography.titleMedium
+            )
             Spacer(modifier = Modifier.height(16.dp))
             Button(onClick = onNewGame) {
                 Text(text = "Nová Hra")
@@ -525,6 +593,11 @@ data class Player(
     val name: String,
     val avatarIndex: Int,
     val order: Int
+)
+
+data class PlayerSetupDraft(
+    val name: String,
+    val avatarIndex: Int
 )
 
 private data class PlayerState(
